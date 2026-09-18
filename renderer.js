@@ -709,10 +709,15 @@ $('btn-new').onclick = () => { openBuffer('hello-world.js', HELLO_TEMPLATE); out
 
 $('btn-save').onclick = async () => {
   const fn = (filenameInput.value || 'untitled.js').trim();
+  const b = activeBuffer();
+  const oldFile = b ? b.file : null;
+  // Renamed in the topbar? Make Save-As explicit — no silent forks.
+  if (oldFile && oldFile !== fn && localCache.some((s) => s.file === oldFile)) {
+    if (!confirm(`Save as "${fn}"? The original "${oldFile}" stays in your library.\n\nOK = save a new file · Cancel = don't save\n(Tip: right-click the row → Rename to retitle instead.)`)) return;
+  }
   const r = await window.scriptify.saveLocal(fn, getCode());
   output.textContent = r.success ? `Saved ${fn} locally.` : `Save failed: ${r.error}`;
   if (r.success) {
-    const b = activeBuffer();
     if (b) b.file = fn;
     // Collapse any other tab holding the same filename — one file, one tab.
     for (let i = buffers.length - 1; i >= 0; i--) {

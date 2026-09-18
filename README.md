@@ -1,4 +1,4 @@
-# Scriptify Affinity v0.8 (Phase 8: hardening + declutter)
+# Scriptify Affinity v0.8.1 (save-as guard + regression tests)
 
 Maker + manager + editor for Affinity V3 scripts. OpenCode-assisted — now drivable BY agents over MCP.
 
@@ -14,7 +14,7 @@ npm start
 ```
 
 ## Install (Windows)
-Built installer: `dist/Scriptify Affinity Setup 0.8.0.exe` (NSIS, per-user, branded icon).
+Built installer: `dist/Scriptify Affinity Setup 0.8.1.exe` (NSIS, per-user, branded icon).
 Rebuild with `npm run dist-win`.
 
 ## Agent access — Scriptify as an MCP server (Phase 6)
@@ -59,6 +59,8 @@ Agent loop: `docs_search` → `library_save` → `affinity_run` (verify output) 
 - Command palette: `Ctrl/Cmd+K` runs any action keyboard-first
 - Editor tabs: up to 8 buffers with per-tab undo + dirty dots
 - Row actions live in right-click menus (+ hover ⋯); tabs stay in sync with rename/delete/save-as
+- Save-as guard: renaming in the topbar asks before forking a new file
+- Regression tests: `npm test` boots the renderer in a stub harness (12 tests: tabs, eviction, palette, drawer, sync)
 
 ## Notes
 - Scripts do not return values — use `console.log()`.

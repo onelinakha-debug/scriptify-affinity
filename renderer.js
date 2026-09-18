@@ -103,13 +103,26 @@ function setCode(code) {
 
 function openBuffer(file, code) {
   const existing = buffers.findIndex((b) => b.file === file);
-  if (existing >= 0) { activateBuffer(existing); return; }
+  if (existing >= 0) {
+    // Refresh clean tabs with fresh code (e.g. re-opened after external change).
+    if (code !== undefined && !buffers[existing].dirty && buffers[existing].code !== code) {
+      suppressDirty = true;
+      if (aceEditor && buffers[existing].session) buffers[existing].session.setValue(code);
+      suppressDirty = false;
+      buffers[existing].code = code;
+    }
+    activateBuffer(existing);
+    return;
+  }
   if (buffers.length >= MAX_TABS) {
     const cleanIdx = buffers.findIndex((b) => !b.dirty);
     const evict = cleanIdx >= 0 ? cleanIdx : 0;
     if (buffers[evict].dirty && !confirm(`Close ${buffers[evict].file} without saving? (8-tab limit)`)) return;
+    const evictedActive = evict === activeIdx;
     buffers.splice(evict, 1);
-    if (activeIdx >= evict) activeIdx--;
+    // Never persist the evicted session into a neighbor — drop the pointer first.
+    if (evictedActive) activeIdx = -1;
+    else if (activeIdx > evict) activeIdx--;
   }
   let session = null;
   if (aceEditor) {
@@ -154,6 +167,28 @@ function markActiveClean() {
   const b = activeBuffer();
   if (b) b.dirty = false;
   renderBufferTabs();
+}
+
+function syncBuffersAfterRename(oldFile, newFile) {
+  let changed = false;
+  for (const b of buffers) if (b.file === oldFile) { b.file = newFile; changed = true; }
+  if (!changed) return;
+  const b = activeBuffer();
+  if (b) filenameInput.value = b.file;
+  if (selectedFile === oldFile) setSelected(newFile);
+  renderBufferTabs();
+}
+
+function dropBuffersForDeleted(file) {
+  // Dirty tabs stay open (content preserved; saving recreates the file).
+  const keep = buffers.filter((b) => b.file !== file || b.dirty);
+  if (keep.length === buffers.length) return;
+  const activeFile = activeBuffer() && activeBuffer().file;
+  buffers = keep;
+  if (!buffers.length) { activeIdx = -1; openBuffer('untitled.js', HELLO_TEMPLATE); return; }
+  const idx = buffers.findIndex((b) => b.file === activeFile);
+  activeIdx = -1;
+  activateBuffer(idx >= 0 ? idx : 0);
 }
 
 function renderBufferTabs() {
@@ -263,34 +298,14 @@ function renderLocal() {
     label.querySelector('.muted').textContent = s.file;
     label.title = (s.description || '') + ' — click to open';
       label.onclick = () => openLocalFile(s.file);
-    const actions = document.createElement('span');
-    actions.className = 'mini-actions';
-    const mkBtn = (t, title, fn) => {
-      const b = document.createElement('button');
-      b.textContent = t; b.title = title; b.className = 'mini';
-      b.onclick = (e) => { e.stopPropagation(); fn(); };
-      return b;
-    };
-    actions.appendChild(mkBtn('⤓', 'Export to disk', async () => {
-      const res = await window.scriptify.exportToDisk(s.file);
-      output.textContent = res.success ? `Exported to ${res.data.path}` : `Export: ${res.error}`;
-    }));
-    actions.appendChild(mkBtn('✎', 'Rename', async () => {
-      const next = prompt(`Rename ${s.file} → (without .js)`, s.file.replace(/\.js$/i, ''));
-      if (!next) return;
-      const res = await window.scriptify.renameLocal(s.file, next);
-      output.textContent = res.success ? `Renamed to ${res.data.filename}` : `Rename failed: ${res.error}`;
-      if (res.success) { filenameInput.value = res.data.filename; refreshLists(); }
-    }));
-    actions.appendChild(mkBtn('🗑', 'Delete local (Affinity copy stays)', async () => {
-      if (!confirm(`Delete local ${s.file}? Affinity library copy stays — remove it in Affinity panel.`)) return;
-      const res = await window.scriptify.deleteLocal(s.file);
-      output.textContent = res.success ? `Deleted local ${s.file}.` : `Delete failed: ${res.error}`;
-      if (res.success) refreshLists();
-    }));
+    const more = document.createElement('button');
+    more.className = 'mini more';
+    more.textContent = '⋯';
+    more.title = 'More actions (right-click works too)';
+    more.onclick = (e) => { e.stopPropagation(); window.scriptify.showContext('local', { file: s.file }); };
     li.appendChild(star);
     li.appendChild(label);
-    li.appendChild(actions);
+    li.appendChild(more);
     li.oncontextmenu = (e) => { e.preventDefault(); window.scriptify.showContext('local', { file: s.file }); };
     localList.appendChild(li);
   }
@@ -314,13 +329,23 @@ async function refreshLists() {
     else if (!r.data.length) mcpList.innerHTML = '<li>(nothing in Affinity library)</li>';
     for (const title of (r.data || [])) {
       const li = document.createElement('li');
-      li.textContent = title;
-      li.onclick = async () => {
+      li.className = 'script-row';
+      const t = document.createElement('span');
+      t.className = 'script-label';
+      t.textContent = title;
+      t.onclick = async () => {
         const res = await window.scriptify.downloadFromMcp(title);
         output.textContent = res.success ? `Downloaded "${title}" to local library. Refreshing…` : `Download failed: ${res.error}`;
         if (res.success) refreshLists();
       };
       li.title = 'Click to download to local library';
+      li.appendChild(t);
+      const more = document.createElement('button');
+      more.className = 'mini more';
+      more.textContent = '⋯';
+      more.title = 'More actions';
+      more.onclick = (e) => { e.stopPropagation(); window.scriptify.showContext('mcp', { title }); };
+      li.appendChild(more);
       li.oncontextmenu = (e) => { e.preventDefault(); window.scriptify.showContext('mcp', { title }); };
       mcpList.appendChild(li);
     }
@@ -388,30 +413,15 @@ function renderCommunity() {
     label.querySelector('b').textContent = s.name || s.id;
     label.querySelector('.muted').textContent = [s.category, s.version ? `v${s.version}` : ''].filter(Boolean).join(' ');
     label.title = s.description || '';
+    label.onclick = (e) => { e.stopPropagation(); window.scriptify.showContext('community', { script: s }); };
     li.appendChild(star);
     li.appendChild(label);
-    const actions = document.createElement('span');
-    actions.className = 'mini-actions';
-    const installBtn = document.createElement('button');
-    installBtn.textContent = 'Install'; installBtn.className = 'mini primary'; installBtn.title = 'Save local + push to Affinity';
-    installBtn.onclick = async () => {
-      output.textContent = `Installing "${s.name}"…`;
-      const res = await window.scriptify.installCommunity(s);
-      output.textContent = res.success
-        ? (res.pushed ? `Installed "${s.name}" → ${res.data.filename} + Affinity.` : `Saved "${s.name}" locally (${res.data.filename}); Affinity push failed: ${res.pushError}`)
-        : `Install failed: ${res.error}`;
-      if (res.success) refreshLists();
-    };
-    const saveBtn = document.createElement('button');
-    saveBtn.textContent = 'Save'; saveBtn.className = 'mini'; saveBtn.title = 'Save local only';
-    saveBtn.onclick = async () => {
-      const res = await window.scriptify.saveCommunity(s);
-      output.textContent = res.success ? `Saved "${s.name}" → ${res.data.filename} (not installed).` : `Save failed: ${res.error}`;
-      if (res.success) refreshLists();
-    };
-    actions.appendChild(installBtn);
-    actions.appendChild(saveBtn);
-    li.appendChild(actions);
+    const more = document.createElement('button');
+    more.className = 'mini more';
+    more.textContent = '⋯';
+    more.title = 'More actions (right-click works too)';
+    more.onclick = (e) => { e.stopPropagation(); window.scriptify.showContext('community', { script: s }); };
+    li.appendChild(more);
     li.oncontextmenu = (e) => { e.preventDefault(); window.scriptify.showContext('community', { script: s }); };
     communityList.appendChild(li);
   }
@@ -660,7 +670,8 @@ let paletteActive = 0;
 function openPalette() {
   $('palette').style.display = 'block';
   $('palette-input').value = '';
-  renderPalette('');
+  paletteActive = 0;
+  paletteItems = renderPalette('');
   $('palette-input').focus();
 }
 
@@ -703,6 +714,11 @@ $('btn-save').onclick = async () => {
   if (r.success) {
     const b = activeBuffer();
     if (b) b.file = fn;
+    // Collapse any other tab holding the same filename — one file, one tab.
+    for (let i = buffers.length - 1; i >= 0; i--) {
+      if (i !== activeIdx && buffers[i].file === fn) buffers.splice(i, 1);
+    }
+    activeIdx = buffers.indexOf(b);
     markActiveClean();
     setSelected(fn);
     refreshLists();
@@ -932,12 +948,12 @@ window.scriptify.onContextAction(async ({ action, file, title, script }) => {
     if (!next) return;
     const res = await window.scriptify.renameLocal(file, next);
     output.textContent = res.success ? `Renamed to ${res.data.filename}` : `Rename failed: ${res.error}`;
-    if (res.success) { filenameInput.value = res.data.filename; refreshLists(); }
+    if (res.success) { syncBuffersAfterRename(file, res.data.filename); refreshLists(); }
   } else if (action === 'local-delete' && file) {
     if (!confirm(`Delete local ${file}? Affinity library copy stays — remove it in Affinity panel.`)) return;
     const res = await window.scriptify.deleteLocal(file);
     output.textContent = res.success ? `Deleted local ${file}.` : `Delete failed: ${res.error}`;
-    if (res.success) refreshLists();
+    if (res.success) { dropBuffersForDeleted(file); refreshLists(); }
   } else if (action === 'local-favorite' && file) favoriteFile(file);
   else if (action === 'local-prompt' && file) promptForFile(file);
   else if (action === 'community-install' && script) {

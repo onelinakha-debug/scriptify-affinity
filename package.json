@@ -1,6 +1,6 @@
 {
   "name": "scriptify-affinity",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Make and manage Affinity V3 scripts (maker + manager + editor, OpenCode-assisted)",
   "author": "onelinakha-debug",
   "main": "main.js",

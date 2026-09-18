@@ -1,4 +1,4 @@
-# Scriptify Affinity v0.6 (Phase 6: agent access)
+# Scriptify Affinity v0.7 (Phase 7: UX overhaul)
 
 Maker + manager + editor for Affinity V3 scripts. OpenCode-assisted — now drivable BY agents over MCP.
 
@@ -14,7 +14,7 @@ npm start
 ```
 
 ## Install (Windows)
-Built installer: `dist/Scriptify Affinity Setup 0.6.0.exe` (NSIS, per-user, branded icon).
+Built installer: `dist/Scriptify Affinity Setup 0.7.0.exe` (NSIS, per-user, branded icon).
 Rebuild with `npm run dist-win`.
 
 ## Agent access — Scriptify as an MCP server (Phase 6)
@@ -52,6 +52,12 @@ Agent loop: `docs_search` → `library_save` → `affinity_run` (verify output) 
 - Drag-drop: drop `.js` files anywhere → import, then choose Install or local-only
 - Preview: Render active Affinity doc spread to JPEG below Output (needs open doc + `render_spread`)
 - Updates: set GitHub `owner/repo`, manual check against latest release with link
+- Sidebar tabs: Mine / Affinity / Discover / Settings (Figma-pages style)
+- Property panel: metadata card with installed badge, inline edit + patch bump
+- Preview tab: Console/Preview tabs, auto-render on Run, fit/100% zoom, before/after compare
+- Context menus: right-click rows, cards and editor (native menus, same actions)
+- Command palette: `Ctrl/Cmd+K` runs any action keyboard-first
+- Editor tabs: up to 8 buffers with per-tab undo + dirty dots
 
 ## Notes
 - Scripts do not return values — use `console.log()`.

@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog, shell, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, safeStorage, Menu } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const fsSync = require('node:fs');
@@ -17,6 +17,11 @@ const AI_DEFAULTS = {
   apiKeyEncrypted: ''
 };
 
+const UI_DEFAULTS = {
+  previewOnRun: true,
+  previewZoom: 'fit'
+};
+
 let localScriptsDir;
 let docsCacheDir;
 let configPath;
@@ -29,7 +34,7 @@ const affinity = core.createAffinity(SERVER_URL, 'scriptify-affinity', app.getVe
 // fetchFresh are destructured from core at the top of this file)
 
 function getConfig() {
-  return core.getConfig(configPath, AI_DEFAULTS);
+  return core.getConfig(configPath, { ...AI_DEFAULTS, ...UI_DEFAULTS });
 }
 
 function saveConfig(config) {
@@ -262,6 +267,23 @@ app.whenReady().then(async () => {
     }
   });
 
+  ipcMain.handle('update-script-meta', async (_e, filename, meta) => {
+    try {
+      const full = path.join(localScriptsDir, path.basename(filename));
+      const code = await fs.readFile(full, 'utf8');
+      const next = upsertMetadataHeader(code, {
+        name: meta.name || '',
+        description: meta.description || '',
+        version: meta.version || '',
+        author: meta.author || ''
+      });
+      await fs.writeFile(full, next, 'utf8');
+      return { success: true, data: parseScriptMetadata(next, path.parse(filename).name) };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
   ipcMain.handle('export-to-disk', async (_e, filename) => {
     try {
       const code = await fs.readFile(path.join(localScriptsDir, path.basename(filename)), 'utf8');
@@ -369,6 +391,43 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.on('open-url', (_e, url) => shell.openExternal(url));
+
+  // ---- Phase 7: native context menus (renderer executes actions) ----
+  ipcMain.on('show-context', (_e, kind, payload = {}) => {
+    if (!win || win.isDestroyed()) return;
+    const send = (action) => win.webContents.send('context-action', { action, ...payload });
+    const item = (label, action, extra = {}) => ({ label, click: () => send(action), ...extra });
+    let template = [];
+    if (kind === 'local') {
+      template = [
+        item('Open', 'local-open'),
+        item('Install to Affinity', 'local-install'),
+        { type: 'separator' },
+        item('Export to disk…', 'local-export'),
+        item('Rename…', 'local-rename'),
+        item('Delete local…', 'local-delete'),
+        { type: 'separator' },
+        item('Toggle favorite', 'local-favorite'),
+        item('Copy prompt for OpenCode', 'local-prompt')
+      ];
+    } else if (kind === 'community') {
+      template = [
+        item('Install (save + push)', 'community-install'),
+        item('Save local only', 'community-save')
+      ];
+    } else if (kind === 'mcp') {
+      template = [item('Download to library', 'mcp-download')];
+    } else if (kind === 'editor') {
+      template = [
+        item('Save', 'editor-save'),
+        item('Run in Affinity', 'editor-run'),
+        item('Save + Install', 'editor-install'),
+        { type: 'separator' },
+        item('Copy prompt for OpenCode', 'editor-prompt')
+      ];
+    }
+    if (template.length) Menu.buildFromTemplate(template).popup({ window: win });
+  });
 
   // ---- Phase 4: favorites ----
   ipcMain.handle('get-favorites', async () => {
@@ -640,6 +699,27 @@ app.whenReady().then(async () => {
     } catch (e) {
       const msg = e.name === 'AbortError' ? 'Request timed out after 120s. Try again.' : e.message;
       return { success: false, error: msg };
+    }
+  });
+
+  ipcMain.handle('get-ui-prefs', async () => {
+    try {
+      const config = await getConfig();
+      return { success: true, data: { previewOnRun: config.previewOnRun !== false, previewZoom: config.previewZoom || 'fit' } };
+    } catch (e) {
+      return { success: false, error: e.message };
+    }
+  });
+
+  ipcMain.handle('set-ui-prefs', async (_e, prefs) => {
+    try {
+      const config = await getConfig();
+      if (prefs && typeof prefs.previewOnRun === 'boolean') config.previewOnRun = prefs.previewOnRun;
+      if (prefs && ['fit', 'full'].includes(prefs.previewZoom)) config.previewZoom = prefs.previewZoom;
+      await saveConfig(config);
+      return { success: true };
+    } catch (e) {
+      return { success: false, error: e.message };
     }
   });
 });

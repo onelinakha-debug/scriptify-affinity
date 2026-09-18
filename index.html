@@ -9,7 +9,7 @@
 </head>
 <body>
 <header class="topbar">
-  <h1 class="brand"><img src="brand assets/scriptify.png" alt="Scriptify" class="logo" /> Scriptify Affinity <span class="ver">v0.6</span></h1>
+  <h1 class="brand"><img src="brand assets/scriptify.png" alt="Scriptify" class="logo" /> Scriptify Affinity <span class="ver">v0.7</span></h1>
   <input id="filename" class="topbar-file" placeholder="my-script.js" spellcheck="false" />
   <div class="header-right">
     <label class="watch"><input type="checkbox" id="watch-toggle" checked /> Watch</label>
@@ -27,17 +27,20 @@
         <button id="btn-new" class="ghost" title="New script from template">+ New</button>
       </div>
     </div>
-    <input id="local-search" placeholder="Search scripts… (⌘K)" />
-    <details class="lib-section" open>
-      <summary>Local</summary>
+    <div class="tabs side-tabs">
+      <button id="side-mine" class="tab active">Mine</button>
+      <button id="side-affinity" class="tab">Affinity</button>
+      <button id="side-discover" class="tab">Discover</button>
+      <button id="side-settings" class="tab" title="Updates & setup">⚙</button>
+    </div>
+    <div id="sidepane-mine">
+      <input id="local-search" placeholder="Search scripts… (⌘K)" />
       <ul id="local-list"></ul>
-    </details>
-    <details class="lib-section" open>
-      <summary>In Affinity</summary>
+    </div>
+    <div id="sidepane-affinity" style="display:none">
       <ul id="mcp-list"></ul>
-    </details>
-    <details class="lib-section">
-      <summary>Community</summary>
+    </div>
+    <div id="sidepane-discover" style="display:none">
       <input id="community-search" placeholder="Filter community…" />
       <input id="repo-url" placeholder="https://github.com/user/repo" />
       <div class="row">
@@ -46,17 +49,18 @@
       </div>
       <ul id="repo-list"></ul>
       <ul id="community-list"></ul>
-    </details>
-    <details class="lib-section">
-      <summary>Updates</summary>
+    </div>
+    <div id="sidepane-settings" style="display:none">
+      <h3>Updates</h3>
       <input id="update-repo" placeholder="https://github.com/owner/repo" />
       <div class="row">
         <button id="btn-update-repo" class="ghost">Set repo</button>
         <button id="btn-check-updates" class="ghost">Check now</button>
       </div>
       <p id="update-status" class="hint"></p>
-    </details>
-    <p class="hint setup">Setup: enable MCP in Affinity, allow save to Scripts panel, open <code>Window &gt; General &gt; Scripts</code>, create a category (e.g. My Scripts). Delete scripts in Affinity — MCP cannot delete.</p>
+      <h3>Setup</h3>
+      <p class="hint setup">Enable MCP in Affinity, allow save to Scripts panel, open <code>Window &gt; General &gt; Scripts</code>, create a category (e.g. My Scripts). Delete scripts in Affinity — MCP cannot delete.</p>
+    </div>
   </aside>
   <section class="stage">
     <div class="stage-toolbar">
@@ -66,17 +70,46 @@
         <button id="btn-preview" class="ghost">Preview doc</button>
       </div>
     </div>
+    <div id="buffer-tabs" class="buffer-tabs"></div>
     <div id="ace-editor"></div>
     <textarea id="editor-fallback" spellcheck="false" style="display:none"></textarea>
     <div class="drawer" id="drawer">
-      <button id="btn-drawer" class="drawer-head" title="Toggle console">Console <span id="run-time" class="muted"></span><span id="drawer-chev" class="chev">▾</span></button>
-      <div class="drawer-body">
+      <div class="drawer-bar">
+        <div class="drawer-tabs">
+          <button id="dt-console" class="dtab active">Console</button>
+          <button id="dt-preview" class="dtab">Preview</button>
+        </div>
+        <span id="run-time" class="muted"></span>
+        <label class="watch" title="Render the active document automatically after every Run"><input type="checkbox" id="preview-on-run" /> Auto</label>
+        <button id="btn-preview-zoom" class="ghost mini" title="Toggle fit / 100%">Fit</button>
+        <button id="btn-preview-compare" class="ghost mini" title="Toggle before / after render">Before</button>
+        <button id="btn-drawer" class="ghost mini" title="Collapse panel">▾</button>
+      </div>
+      <div class="drawer-body" id="drawer-console">
         <pre id="output">(console.log output appears here)</pre>
+      </div>
+      <div class="drawer-body" id="drawer-preview" style="display:none">
+        <div id="preview-empty" class="hint">No render yet — Run a script or hit Preview doc.</div>
         <img id="preview" class="preview" style="display:none" alt="Affinity render preview" />
       </div>
     </div>
   </section>
   <aside class="col inspector">
+    <div id="prop-card" class="prop-card" style="display:none">
+      <div class="prop-title-row"><b id="prop-name"></b><span id="prop-installed" class="status">–</span></div>
+      <div id="prop-desc" class="muted"></div>
+      <div class="prop-meta"><span id="prop-ver"></span><span id="prop-size"></span></div>
+      <details class="prop-edit">
+        <summary>Edit metadata</summary>
+        <label class="fld">Title <input id="prop-in-name" /></label>
+        <label class="fld">Description <input id="prop-in-desc" /></label>
+        <label class="fld">Version <input id="prop-in-ver" /></label>
+        <div class="row">
+          <button id="btn-prop-save" class="ghost">Save</button>
+          <button id="btn-prop-bump" class="ghost" title="Bump patch version">Bump 0.0.x</button>
+        </div>
+      </details>
+    </div>
     <div class="tabs">
       <button id="tab-docs" class="tab active">Docs</button>
       <button id="tab-studio" class="tab">✦ Studio</button>
@@ -121,6 +154,7 @@
   </aside>
 </main>
 <script src="renderer.js"></script>
+<div id="palette" style="display:none"><input id="palette-input" placeholder="Type a command or search…" autocomplete="off" spellcheck="false" /><ul id="palette-list"></ul></div>
 <div id="drop-overlay" style="display:none"><div>Drop <code>.js</code> files to import<br /><span class="muted">saves to library, then choose Install</span></div></div>
 </body>
 </html>

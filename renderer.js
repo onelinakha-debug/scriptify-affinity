@@ -38,17 +38,147 @@ const HELLO_TEMPLATE = `/**\n * name: Hello World\n * description: Minimal Affin
 let localCache = [];
 let communityCache = [];
 let favorites = new Set();
+let mcpTitles = [];
+let selectedFile = '';
 
-// ---- editor: Ace with textarea fallback ----
+// ---- property panel ----
+function setSelected(file) {
+  selectedFile = file;
+  renderPropCard();
+}
+
+function fmtSize(b) {
+  if (b < 1024) return b + ' B';
+  return (b / 1024).toFixed(1) + ' KB';
+}
+
+function renderPropCard() {
+  const card = $('prop-card');
+  const entry = localCache.find((s) => s.file === selectedFile);
+  if (!entry) { card.style.display = 'none'; return; }
+  card.style.display = 'block';
+  $('prop-name').textContent = entry.name;
+  $('prop-desc').textContent = entry.description || 'No description.';
+  $('prop-ver').textContent = (entry.version ? 'v' + entry.version : 'unversioned') + ' · ' + fmtSize(entry.size);
+  $('prop-size').textContent = new Date(entry.modified).toLocaleDateString();
+  const installed = mcpTitles.map((t) => t.toLowerCase()).includes(entry.name.toLowerCase());
+  const badge = $('prop-installed');
+  badge.textContent = installed ? '● Installed' : '○ Local only';
+  badge.className = 'status ' + (installed ? 'online' : 'offline');
+  $('prop-in-name').value = entry.name;
+  $('prop-in-desc').value = entry.description || '';
+  $('prop-in-ver').value = entry.version || '';
+}
+
+function bumpPatch(v) {
+  const parts = String(v || '0.1.0').split('.').map((n) => parseInt(n, 10) || 0);
+  while (parts.length < 3) parts.push(0);
+  parts[2]++;
+  return parts.join('.');
+}
+
+// ---- editor: Ace with per-buffer sessions + textarea fallback ----
+const MAX_TABS = 8;
 let aceEditor = null;
+let buffers = [];
+let activeIdx = -1;
+let suppressDirty = false;
+
+function activeBuffer() { return buffers[activeIdx] || null; }
+
 function getCode() {
   if (aceEditor) return aceEditor.getValue();
   return $('editor-fallback').value;
 }
+
 function setCode(code) {
-  if (aceEditor) aceEditor.setValue(code, -1);
-  else $('editor-fallback').value = code;
+  const b = activeBuffer();
+  suppressDirty = true;
+  if (aceEditor && b && b.session) { b.session.setValue(code); b.code = code; }
+  else { $('editor-fallback').value = code; if (b) b.code = code; }
+  suppressDirty = false;
+  if (b) b.dirty = true; // programmatic inserts (Studio, fixes) dirty the tab
+  renderBufferTabs();
 }
+
+function openBuffer(file, code) {
+  const existing = buffers.findIndex((b) => b.file === file);
+  if (existing >= 0) { activateBuffer(existing); return; }
+  if (buffers.length >= MAX_TABS) {
+    const cleanIdx = buffers.findIndex((b) => !b.dirty);
+    const evict = cleanIdx >= 0 ? cleanIdx : 0;
+    if (buffers[evict].dirty && !confirm(`Close ${buffers[evict].file} without saving? (8-tab limit)`)) return;
+    buffers.splice(evict, 1);
+    if (activeIdx >= evict) activeIdx--;
+  }
+  let session = null;
+  if (aceEditor) {
+    session = window.ace.createEditSession(code || '', 'ace/mode/javascript');
+    session.on('change', () => {
+      if (suppressDirty) return;
+      const b = buffers.find((x) => x.session === session);
+      if (b && !b.dirty) { b.dirty = true; renderBufferTabs(); }
+    });
+  }
+  buffers.push({ file, code: code || '', session, dirty: false });
+  activateBuffer(buffers.length - 1);
+}
+
+function activateBuffer(i) {
+  const cur = activeBuffer();
+  if (cur) cur.code = getCode();
+  activeIdx = i;
+  const b = activeBuffer();
+  if (!b) return;
+  suppressDirty = true;
+  if (aceEditor && b.session) aceEditor.setSession(b.session);
+  else $('editor-fallback').value = b.code;
+  suppressDirty = false;
+  filenameInput.value = b.file;
+  setSelected(b.file);
+  renderBufferTabs();
+}
+
+function closeBuffer(i) {
+  const b = buffers[i];
+  if (!b) return;
+  if (b.dirty && !confirm(`Close ${b.file} without saving?`)) return;
+  const wasActive = i === activeIdx;
+  buffers.splice(i, 1);
+  if (!buffers.length) { activeIdx = -1; openBuffer('untitled.js', HELLO_TEMPLATE); return; }
+  if (wasActive) { activeIdx = -1; activateBuffer(Math.min(i, buffers.length - 1)); }
+  else { if (activeIdx > i) activeIdx--; renderBufferTabs(); }
+}
+
+function markActiveClean() {
+  const b = activeBuffer();
+  if (b) b.dirty = false;
+  renderBufferTabs();
+}
+
+function renderBufferTabs() {
+  const strip = $('buffer-tabs');
+  if (!strip) return;
+  strip.innerHTML = '';
+  buffers.forEach((b, i) => {
+    const t = document.createElement('button');
+    t.className = 'buf-tab' + (i === activeIdx ? ' active' : '') + (b.dirty ? ' dirty' : '');
+    const label = document.createElement('span');
+    label.textContent = (b.dirty ? '● ' : '') + b.file;
+    const x = document.createElement('span');
+    x.className = 'buf-x';
+    x.textContent = '✕';
+    x.title = 'Close';
+    x.onclick = (e) => { e.stopPropagation(); closeBuffer(i); };
+    t.appendChild(label);
+    t.appendChild(x);
+    t.title = b.file;
+    t.onclick = () => activateBuffer(i);
+    t.oncontextmenu = (e) => { e.preventDefault(); window.scriptify.showContext('editor', {}); };
+    strip.appendChild(t);
+  });
+}
+
 function initEditor() {
   try {
     if (window.ace && $('ace-editor')) {
@@ -56,7 +186,6 @@ function initEditor() {
       aceEditor.setTheme('ace/theme/github');
       aceEditor.session.setMode('ace/mode/javascript');
       aceEditor.setOptions({ fontSize: 13, showPrintMargin: false, wrap: true });
-      aceEditor.setValue(HELLO_TEMPLATE, -1);
       $('editor-fallback').style.display = 'none';
     } else {
       throw new Error('ace missing');
@@ -74,6 +203,7 @@ function initEditor() {
       exec: () => $('btn-save').click()
     });
   }
+  openBuffer('hello-world.js', HELLO_TEMPLATE);
 }
 
 function escapeHtml(s) {
@@ -132,11 +262,7 @@ function renderLocal() {
     label.querySelector('b').textContent = s.name;
     label.querySelector('.muted').textContent = s.file;
     label.title = (s.description || '') + ' — click to open';
-    label.onclick = async () => {
-      const res = await window.scriptify.readLocal(s.file);
-      if (res.success) { setCode(res.data.code); filenameInput.value = s.file; output.textContent = `Loaded ${s.file}`; }
-      else output.textContent = `Open failed: ${res.error}`;
-    };
+      label.onclick = () => openLocalFile(s.file);
     const actions = document.createElement('span');
     actions.className = 'mini-actions';
     const mkBtn = (t, title, fn) => {
@@ -165,6 +291,7 @@ function renderLocal() {
     li.appendChild(star);
     li.appendChild(label);
     li.appendChild(actions);
+    li.oncontextmenu = (e) => { e.preventDefault(); window.scriptify.showContext('local', { file: s.file }); };
     localList.appendChild(li);
   }
 }
@@ -182,6 +309,7 @@ async function refreshLists() {
   try {
     const r = await window.scriptify.listMcp();
     mcpList.innerHTML = '';
+    mcpTitles = r.success ? (r.data || []) : [];
     if (!r.success) mcpList.innerHTML = `<li class="err">${escapeHtml(r.error)}</li>`;
     else if (!r.data.length) mcpList.innerHTML = '<li>(nothing in Affinity library)</li>';
     for (const title of (r.data || [])) {
@@ -193,9 +321,11 @@ async function refreshLists() {
         if (res.success) refreshLists();
       };
       li.title = 'Click to download to local library';
+      li.oncontextmenu = (e) => { e.preventDefault(); window.scriptify.showContext('mcp', { title }); };
       mcpList.appendChild(li);
     }
   } catch (e) { mcpList.innerHTML = `<li class="err">${escapeHtml(e.message)}</li>`; }
+  renderPropCard();
 }
 
 // ---- community ----
@@ -282,6 +412,7 @@ function renderCommunity() {
     actions.appendChild(installBtn);
     actions.appendChild(saveBtn);
     li.appendChild(actions);
+    li.oncontextmenu = (e) => { e.preventDefault(); window.scriptify.showContext('community', { script: s }); };
     communityList.appendChild(li);
   }
 }
@@ -426,6 +557,14 @@ function showTabs(which) {
   paneStudio.style.display = docs ? 'none' : 'block';
 }
 
+const SIDEPANES = ['mine', 'affinity', 'discover', 'settings'];
+function showSide(which) {
+  for (const p of SIDEPANES) {
+    $('side-' + p).classList.toggle('active', p === which);
+    $('sidepane-' + p).style.display = p === which ? 'block' : 'none';
+  }
+}
+
 function addAiResultActions(box, code) {
   const actions = document.createElement('div');
   actions.className = 'msg-actions';
@@ -496,26 +635,92 @@ async function studioGenerate() {
   addAiResultActions(box, r.data.code);
 }
 
-// ---- wire up ----
+// ---- command palette (Ctrl/Cmd+K) ----
+const COMMANDS = [
+  { id: 'refresh', label: 'Refresh all lists', run: () => $('btn-refresh').click() },
+  { id: 'new', label: 'New script from template', run: () => $('btn-new').click() },
+  { id: 'save', label: 'Save active buffer locally', run: () => $('btn-save').click() },
+  { id: 'run', label: 'Run in Affinity', run: () => $('btn-run').click() },
+  { id: 'install', label: 'Save + Install to Affinity', run: () => $('btn-install').click() },
+  { id: 'preview', label: 'Preview active Affinity document', run: () => $('btn-preview').click() },
+  { id: 'copy-prompt', label: 'Copy prompt for OpenCode', run: () => $('btn-copy-prompt').click() },
+  { id: 'side-mine', label: 'Go to My scripts', run: () => showSide('mine') },
+  { id: 'side-affinity', label: 'Go to Affinity library', run: () => showSide('affinity') },
+  { id: 'side-discover', label: 'Go to Community', run: () => { showSide('discover'); refreshCommunity(); } },
+  { id: 'side-settings', label: 'Go to Settings', run: () => showSide('settings') },
+  { id: 'docs-refresh', label: 'Refresh SDK docs', run: () => { showTabs('docs'); refreshDocs(); } },
+  { id: 'studio', label: 'Open AI Studio', run: () => { showTabs('studio'); refreshAiStatus(); } },
+  { id: 'studio-generate', label: 'Studio: generate script', run: () => { showTabs('studio'); studioGenerate(); } },
+  { id: 'watch', label: 'Toggle Watch Mode', run: () => { watchToggle.checked = !watchToggle.checked; watchToggle.onchange(); } },
+  { id: 'updates', label: 'Check for app updates', run: () => { showSide('settings'); $('btn-check-updates').click(); } },
+  { id: 'search-local', label: 'Search local scripts…', run: () => { showSide('mine'); localSearch.focus(); } }
+];
+let paletteActive = 0;
+
+function openPalette() {
+  $('palette').style.display = 'block';
+  $('palette-input').value = '';
+  renderPalette('');
+  $('palette-input').focus();
+}
+
+function closePalette() {
+  $('palette').style.display = 'none';
+}
+
+function renderPalette(q) {
+  const query = q.trim().toLowerCase();
+  const items = COMMANDS.filter((c) => !query || c.label.toLowerCase().includes(query));
+  paletteActive = Math.min(paletteActive, Math.max(0, items.length - 1));
+  const ul = $('palette-list');
+  ul.innerHTML = '';
+  if (!items.length) { ul.innerHTML = '<li>(no matches)</li>'; return []; }
+  items.forEach((c, i) => {
+    const li = document.createElement('li');
+    li.textContent = c.label;
+    if (i === paletteActive) li.className = 'active';
+    li.onclick = () => { closePalette(); c.run(); };
+    ul.appendChild(li);
+  });
+  return items;
+}
+
+let paletteItems = [];
+$('palette-input').addEventListener('input', (e) => { paletteActive = 0; paletteItems = renderPalette(e.target.value); });
+$('palette-input').addEventListener('keydown', (e) => {
+  if (e.key === 'ArrowDown') { e.preventDefault(); paletteActive = Math.min(paletteActive + 1, paletteItems.length - 1); renderPalette(e.target.value); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); paletteActive = Math.max(paletteActive - 1, 0); renderPalette(e.target.value); }
+  else if (e.key === 'Enter') { e.preventDefault(); const c = paletteItems[paletteActive]; closePalette(); if (c) c.run(); }
+  else if (e.key === 'Escape') closePalette();
+});
 $('btn-refresh').onclick = async () => { await refreshStatus(); await refreshLists(); await refreshRepos(); };
-$('btn-new').onclick = () => { setCode(HELLO_TEMPLATE); filenameInput.value = 'hello-world.js'; output.textContent = 'Template loaded. Edit, Save, then Run.'; };
+$('btn-new').onclick = () => { openBuffer('hello-world.js', HELLO_TEMPLATE); output.textContent = 'Template opened in a new tab. Edit, Save, then Run.'; };
 
 $('btn-save').onclick = async () => {
   const fn = (filenameInput.value || 'untitled.js').trim();
   const r = await window.scriptify.saveLocal(fn, getCode());
   output.textContent = r.success ? `Saved ${fn} locally.` : `Save failed: ${r.error}`;
-  if (r.success) refreshLists();
+  if (r.success) {
+    const b = activeBuffer();
+    if (b) b.file = fn;
+    markActiveClean();
+    setSelected(fn);
+    refreshLists();
+  }
 };
+$('editor-fallback').addEventListener('input', () => {
+  const b = activeBuffer();
+  if (b) { b.code = $('editor-fallback').value; if (!b.dirty) { b.dirty = true; renderBufferTabs(); } }
+});
 
 $('btn-run').onclick = async () => {
   output.textContent = 'Running in Affinity…';
-  $('drawer').classList.remove('closed');
-  $('drawer-chev').textContent = '▾';
-  previewImg.style.display = 'none';
+  setDrawer(true);
   const t0 = Date.now();
   const r = await window.scriptify.execute(getCode());
   runTime.textContent = `(${(Date.now() - t0) / 1000}s)`;
   output.textContent = r.success ? (r.output || '(no output — script ran, nothing logged)') : `Run failed: ${r.error}`;
+  if (r.success && $('preview-on-run').checked) renderPreviewToPanel(true);
 };
 
 $('btn-install').onclick = async () => {
@@ -527,28 +732,75 @@ $('btn-install').onclick = async () => {
   refreshLists();
 };
 
-$('btn-preview').onclick = async () => {
-  output.textContent = 'Rendering active document…';
+$('btn-preview').onclick = () => renderPreviewToPanel(false);
+
+let lastPreview = '';
+let prevPreview = '';
+let previewZoomFit = true;
+
+function showDrawerTab(which) {
+  const consoleTab = which === 'console';
+  $('dt-console').classList.toggle('active', consoleTab);
+  $('dt-preview').classList.toggle('active', !consoleTab);
+  $('drawer-console').style.display = consoleTab ? 'block' : 'none';
+  $('drawer-preview').style.display = consoleTab ? 'none' : 'block';
+}
+
+function setDrawer(open) {
+  $('drawer').classList.toggle('closed', !open);
+  $('btn-drawer').textContent = open ? '▾' : '▸';
+}
+
+async function renderPreviewToPanel(auto) {
+  setDrawer(true);
+  showDrawerTab('preview');
+  $('preview-empty').textContent = auto ? 'Rendering after run…' : 'Rendering active document…';
   const r = await window.scriptify.renderPreview();
   if (r.success) {
+    if (lastPreview) prevPreview = lastPreview;
+    lastPreview = r.image;
     previewImg.src = r.image;
     previewImg.style.display = 'block';
-    output.textContent = 'Preview rendered below Output.';
+    $('preview-empty').style.display = 'none';
+    $('btn-preview-compare').disabled = !prevPreview;
+    output.textContent = 'Preview rendered in the Preview tab.';
   } else {
-    output.textContent = `Preview failed: ${r.error} (needs an open document + render_spread support)`;
+    $('preview-empty').textContent = 'Preview failed: ' + r.error + ' (needs an open document + render_spread support)';
+    $('preview-empty').style.display = 'block';
+    output.textContent = 'Preview failed: ' + r.error;
   }
-};
+}
 
 $('btn-docs').onclick = refreshDocs;
 $('btn-search').onclick = searchHints;
 docsSearch.addEventListener('keydown', (e) => { if (e.key === 'Enter') searchHints(); });
 tabDocs.onclick = () => showTabs('docs');
 tabStudio.onclick = () => { showTabs('studio'); refreshAiStatus(); };
-$('btn-drawer').onclick = () => {
-  const d = $('drawer');
-  d.classList.toggle('closed');
-  $('drawer-chev').textContent = d.classList.contains('closed') ? '▸' : '▾';
+for (const p of SIDEPANES) $('side-' + p).onclick = () => showSide(p);
+$('btn-drawer').onclick = () => setDrawer($('drawer').classList.contains('closed'));
+$('dt-console').onclick = () => showDrawerTab('console');
+$('dt-preview').onclick = () => showDrawerTab('preview');
+$('btn-preview-zoom').onclick = (e) => {
+  previewZoomFit = !previewZoomFit;
+  previewImg.style.width = previewZoomFit ? '100%' : 'auto';
+  previewImg.style.maxWidth = previewZoomFit ? '100%' : 'none';
+  e.target.textContent = previewZoomFit ? 'Fit' : '100%';
+  window.scriptify.setUiPrefs({ previewZoom: previewZoomFit ? 'fit' : 'full' });
 };
+$('btn-preview-compare').onclick = (e) => {
+  if (!prevPreview) return;
+  const showingBefore = previewImg.src === lastPreview && prevPreview;
+  previewImg.src = showingBefore ? prevPreview : lastPreview;
+  e.target.textContent = showingBefore ? 'After' : 'Before';
+};
+$('preview-on-run').onchange = (e) => {
+  window.scriptify.setUiPrefs({ previewOnRun: e.target.checked });
+};
+window.scriptify.getUiPrefs().then((r) => {
+  if (!r.success) return;
+  $('preview-on-run').checked = r.data.previewOnRun !== false;
+  if (r.data.previewZoom === 'full') $('btn-preview-zoom').click();
+}).catch(() => {});
 $('btn-studio-generate').onclick = studioGenerate;
 studioTask.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); studioGenerate(); }
@@ -587,11 +839,28 @@ localSearch.addEventListener('input', renderLocal);
 localSearch.addEventListener('keydown', (e) => { if (e.key === 'Escape') { localSearch.value = ''; renderLocal(); } });
 communitySearch.addEventListener('input', renderCommunity);
 document.addEventListener('keydown', (e) => {
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); localSearch.focus(); }
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+    e.preventDefault();
+    if ($('palette').style.display === 'block') closePalette();
+    else openPalette();
+  }
 });
 
-$('btn-update-repo').onclick = async () => {
-  const r = await window.scriptify.setUpdateRepo(updateRepoInput.value.trim());
+$('btn-prop-save').onclick = async () => {
+  if (!selectedFile) return;
+  const r = await window.scriptify.updateScriptMeta(selectedFile, {
+    name: $('prop-in-name').value.trim(),
+    description: $('prop-in-desc').value.trim(),
+    version: $('prop-in-ver').value.trim()
+  });
+  output.textContent = r.success ? `Metadata saved for ${selectedFile}.` : `Save failed: ${r.error}`;
+  if (r.success) refreshLists();
+};
+$('btn-prop-bump').onclick = () => {
+  $('prop-in-ver').value = bumpPatch($('prop-in-ver').value);
+  $('btn-prop-save').click();
+};
+$('btn-update-repo').onclick = async () => {  const r = await window.scriptify.setUpdateRepo(updateRepoInput.value.trim());
   updateStatus.textContent = r.success ? (r.data ? `Update repo set: ${r.data}` : 'Update repo cleared.') : `Error: ${r.error}`;
 };
 $('btn-check-updates').onclick = async () => {
@@ -623,6 +892,79 @@ window.scriptify.onLibraryChanged(() => {
   if (libChangedTimer) clearTimeout(libChangedTimer);
   libChangedTimer = setTimeout(() => refreshLists(), 600);
 });
+
+// ---- context-menu actions (also used by row buttons) ----
+async function openLocalFile(file) {
+  const res = await window.scriptify.readLocal(file);
+  if (res.success) { openBuffer(file, res.data.code); output.textContent = `Loaded ${file}`; }
+  else output.textContent = `Open failed: ${res.error}`;
+}
+
+async function installLocalFile(file) {
+  const p = await window.scriptify.pushToMcp(file);
+  output.textContent = p.success ? `Installed ${file} to Affinity library.` : `Install failed: ${p.error}`;
+  refreshLists();
+}
+
+async function favoriteFile(file) {
+  const r = await window.scriptify.toggleFavorite(file);
+  if (r.success) { favorites = new Set(r.data); renderLocal(); renderCommunity(); }
+}
+
+async function promptForFile(file) {
+  const res = await window.scriptify.readLocal(file);
+  if (!res.success) { output.textContent = `Open failed: ${res.error}`; return; }
+  const prompt = `You are helping with an Affinity V3 JS script.\nRules: plain .js only, metadata header with lowercase name:/description:, use require('/application'), console.log for output, no invented APIs.\nCurrent script (${file}):\n\`\`\`js\n${res.data.code}\n\`\`\`\nTask: `;
+  try {
+    await navigator.clipboard.writeText(prompt);
+    output.textContent = `Prompt for ${file} copied. Paste into OpenCode.`;
+  } catch (e) { output.textContent = 'Copy failed: ' + e.message; }
+}
+
+window.scriptify.onContextAction(async ({ action, file, title, script }) => {
+  if (action === 'local-open' && file) openLocalFile(file);
+  else if (action === 'local-install' && file) installLocalFile(file);
+  else if (action === 'local-export' && file) {
+    const res = await window.scriptify.exportToDisk(file);
+    output.textContent = res.success ? `Exported to ${res.data.path}` : `Export: ${res.error}`;
+  } else if (action === 'local-rename' && file) {
+    const next = prompt(`Rename ${file} → (without .js)`, file.replace(/\.js$/i, ''));
+    if (!next) return;
+    const res = await window.scriptify.renameLocal(file, next);
+    output.textContent = res.success ? `Renamed to ${res.data.filename}` : `Rename failed: ${res.error}`;
+    if (res.success) { filenameInput.value = res.data.filename; refreshLists(); }
+  } else if (action === 'local-delete' && file) {
+    if (!confirm(`Delete local ${file}? Affinity library copy stays — remove it in Affinity panel.`)) return;
+    const res = await window.scriptify.deleteLocal(file);
+    output.textContent = res.success ? `Deleted local ${file}.` : `Delete failed: ${res.error}`;
+    if (res.success) refreshLists();
+  } else if (action === 'local-favorite' && file) favoriteFile(file);
+  else if (action === 'local-prompt' && file) promptForFile(file);
+  else if (action === 'community-install' && script) {
+    output.textContent = `Installing "${script.name}"…`;
+    const res = await window.scriptify.installCommunity(script);
+    output.textContent = res.success
+      ? (res.pushed ? `Installed "${script.name}".` : `Saved locally; Affinity push failed: ${res.pushError}`)
+      : `Install failed: ${res.error}`;
+    if (res.success) refreshLists();
+  } else if (action === 'community-save' && script) {
+    const res = await window.scriptify.saveCommunity(script);
+    output.textContent = res.success ? `Saved "${script.name}" (local only).` : `Save failed: ${res.error}`;
+    if (res.success) refreshLists();
+  } else if (action === 'mcp-download' && title) {
+    const res = await window.scriptify.downloadFromMcp(title);
+    output.textContent = res.success ? `Downloaded "${title}".` : `Download failed: ${res.error}`;
+    if (res.success) refreshLists();
+  } else if (action === 'editor-save') $('btn-save').click();
+  else if (action === 'editor-run') $('btn-run').click();
+  else if (action === 'editor-install') $('btn-install').click();
+  else if (action === 'editor-prompt') copyPrompt();
+});
+
+for (const id of ['ace-editor', 'editor-fallback']) {
+  const el = $(id);
+  if (el) el.addEventListener('contextmenu', (e) => { e.preventDefault(); window.scriptify.showContext('editor', {}); });
+}
 window.scriptify.getWatch().then((r) => { if (r.success) watchToggle.checked = r.enabled; }).catch(() => {});
 
 initEditor();

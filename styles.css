@@ -136,6 +136,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, summary:focus
 .library { padding: 14px; overflow-y: auto; display: flex; flex-direction: column; }
 .lib-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .lib-head .row { margin-bottom: 0; }
+.side-tabs { margin-bottom: 10px; }
 
 .lib-section { border-top: 1px solid var(--border); padding: 4px 0 8px; }
 .lib-section > summary {
@@ -201,27 +202,25 @@ code { background: var(--surface-soft); border: 1px solid var(--border); padding
 #ace-editor { flex: 1; min-height: 200px; }
 #editor-fallback { flex: 1; min-height: 200px; background: var(--surface); color: var(--text); border: 0; border-bottom: 1px solid var(--border); padding: 14px; font-family: Consolas, Menlo, monospace; font-size: 13px; resize: none; }
 
+/* ---- buffer tabs ---- */
+.buffer-tabs { display: flex; gap: 4px; padding: 8px 12px 0; overflow-x: auto; flex-shrink: 0; }
+button.buf-tab { display: flex; align-items: center; gap: 7px; background: var(--surface-soft); color: var(--text-soft); border: 1px solid var(--border); border-bottom: 0; border-radius: 9px 9px 0 0; padding: 6px 8px 6px 12px; font-size: 12px; max-width: 190px; }
+button.buf-tab span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+button.buf-tab:hover { background: var(--surface-soft); color: var(--text); }
+button.buf-tab.active { background: var(--surface); color: var(--text); font-weight: 600; }
+button.buf-tab.dirty span:first-child { font-style: italic; }
+.buf-x { font-size: 10px; color: var(--text-faint); border-radius: 50%; padding: 1px 5px; }
+.buf-x:hover { background: var(--border-strong); color: var(--text); }
+
 /* ---- console drawer ---- */
 .drawer { border-top: 1px solid var(--border); background: var(--surface); flex-shrink: 0; }
-.drawer-head {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: transparent;
-  border: 0;
-  color: var(--text-soft);
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 9px 14px;
-  border-radius: 0;
-}
-.drawer-head:hover { background: var(--surface-soft); color: var(--text); }
-.chev { margin-left: auto; font-size: 11px; transition: transform 0.15s; }
-.drawer.closed .chev { transform: rotate(-90deg); }
-.drawer-body { padding: 0 14px 14px; max-height: 220px; overflow: auto; }
+.drawer-bar { display: flex; align-items: center; gap: 10px; padding: 7px 14px; }
+.drawer-tabs { display: flex; gap: 4px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: 999px; padding: 3px; }
+button.dtab { background: transparent; border: 0; color: var(--text-soft); border-radius: 999px; padding: 5px 14px; font-size: 12px; font-weight: 600; }
+button.dtab:hover { background: transparent; color: var(--text); }
+button.dtab.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow); border: 1px solid var(--border); }
+.drawer-bar .muted { margin-right: auto; }
+.drawer-bar .watch { font-size: 12px; }
 .drawer.closed .drawer-body { display: none; }
 
 #output {
@@ -240,6 +239,14 @@ code { background: var(--surface-soft); border: 1px solid var(--border); padding
 
 /* ---- right inspector ---- */
 .inspector { padding: 14px; overflow-y: auto; }
+.prop-card { border: 1px solid var(--border); border-radius: var(--radius); padding: 12px; margin-bottom: 12px; background: var(--surface); box-shadow: var(--shadow); }
+.prop-title-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.prop-title-row b { font-size: 14px; }
+.prop-title-row .status { font-size: 11px; padding: 3px 9px; }
+.prop-card .muted { display: block; margin: 4px 0 6px; font-size: 12px; }
+.prop-meta { display: flex; gap: 10px; font-size: 11px; color: var(--text-faint); }
+.prop-edit { margin-top: 8px; }
+.prop-edit summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--text-soft); }
 .tabs { display: flex; gap: 4px; background: var(--surface-soft); border: 1px solid var(--border); border-radius: 999px; padding: 3px; margin-bottom: 12px; }
 button.tab { flex: 1; background: transparent; border: 0; color: var(--text-soft); border-radius: 999px; padding: 6px 10px; font-size: 13px; }
 button.tab:hover { background: transparent; color: var(--text); }
@@ -256,6 +263,13 @@ button.tab.active { background: var(--surface); color: var(--text); box-shadow: 
 .ai-settings summary { cursor: pointer; font-size: 13px; font-weight: 600; }
 .fld { display: block; font-size: 12px; color: var(--text-soft); margin-top: 8px; }
 .fld input, .fld select { display: block; width: 100%; margin-top: 4px; padding: 8px 10px; background: var(--surface); color: var(--text); border: 1px solid var(--border-strong); border-radius: 10px; font-size: 13px; font-family: inherit; }
+
+/* ---- command palette ---- */
+#palette { position: fixed; top: 14%; left: 50%; transform: translateX(-50%); width: 540px; max-width: 90vw; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 16px; box-shadow: 0 16px 50px rgba(0, 0, 0, 0.16); z-index: 60; padding: 10px; }
+#palette-input { width: 100%; border: 0; background: transparent; font-size: 15px; font-family: inherit; color: var(--text); padding: 10px 12px; outline: none; }
+#palette-list { max-height: 320px; overflow: auto; margin-top: 6px; }
+#palette-list li.active { background: var(--ink); color: #fff; }
+#palette-list li.active span { color: #ccc; }
 
 /* ---- drop overlay ---- */
 #drop-overlay { position: fixed; inset: 0; background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(3px); display: flex; align-items: center; justify-content: center; z-index: 50; font-size: 17px; color: var(--text); }

@@ -1,0 +1,34 @@
+{
+  "name": "scriptify-affinity",
+  "version": "0.6.0",
+  "description": "Make and manage Affinity V3 scripts (maker + manager + editor, OpenCode-assisted)",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "mcp-server": "node mcp-server.js",
+    "dist": "electron-builder --win nsis --publish never",
+    "dist-win": "electron-builder --win nsis --publish never"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "com.scriptify.affinity",
+    "productName": "Scriptify Affinity",
+    "files": [
+      "**/*"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "brand assets/icon.ico"
+    },
+    "mac": {
+      "target": "dmg"
+    }
+  }
+}

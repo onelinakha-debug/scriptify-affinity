@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Scriptify Affinity</title>
+<link rel="stylesheet" href="styles.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.32.3/ace.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <h1 class="brand"><img src="brand assets/scriptify.png" alt="Scriptify" class="logo" /> Scriptify Affinity <span class="ver">v0.6</span></h1>
+  <input id="filename" class="topbar-file" placeholder="my-script.js" spellcheck="false" />
+  <div class="header-right">
+    <label class="watch"><input type="checkbox" id="watch-toggle" checked /> Watch</label>
+    <div id="status" class="status offline">MCP: checking…</div>
+    <button id="btn-run" class="ghost">Run</button>
+    <button id="btn-install">Install</button>
+  </div>
+</header>
+<main class="app-grid">
+  <aside class="col library">
+    <div class="lib-head">
+      <h2>Library</h2>
+      <div class="row">
+        <button id="btn-refresh" class="ghost icon" title="Refresh all">⟳</button>
+        <button id="btn-new" class="ghost" title="New script from template">+ New</button>
+      </div>
+    </div>
+    <input id="local-search" placeholder="Search scripts… (⌘K)" />
+    <details class="lib-section" open>
+      <summary>Local</summary>
+      <ul id="local-list"></ul>
+    </details>
+    <details class="lib-section" open>
+      <summary>In Affinity</summary>
+      <ul id="mcp-list"></ul>
+    </details>
+    <details class="lib-section">
+      <summary>Community</summary>
+      <input id="community-search" placeholder="Filter community…" />
+      <input id="repo-url" placeholder="https://github.com/user/repo" />
+      <div class="row">
+        <button id="btn-add-repo" class="ghost">Add repo</button>
+        <button id="btn-community" class="ghost">Load</button>
+      </div>
+      <ul id="repo-list"></ul>
+      <ul id="community-list"></ul>
+    </details>
+    <details class="lib-section">
+      <summary>Updates</summary>
+      <input id="update-repo" placeholder="https://github.com/owner/repo" />
+      <div class="row">
+        <button id="btn-update-repo" class="ghost">Set repo</button>
+        <button id="btn-check-updates" class="ghost">Check now</button>
+      </div>
+      <p id="update-status" class="hint"></p>
+    </details>
+    <p class="hint setup">Setup: enable MCP in Affinity, allow save to Scripts panel, open <code>Window &gt; General &gt; Scripts</code>, create a category (e.g. My Scripts). Delete scripts in Affinity — MCP cannot delete.</p>
+  </aside>
+  <section class="stage">
+    <div class="stage-toolbar">
+      <div class="row">
+        <button id="btn-save" class="ghost">Save</button>
+        <button id="btn-copy-prompt" class="ghost">Copy prompt for OpenCode</button>
+        <button id="btn-preview" class="ghost">Preview doc</button>
+      </div>
+    </div>
+    <div id="ace-editor"></div>
+    <textarea id="editor-fallback" spellcheck="false" style="display:none"></textarea>
+    <div class="drawer" id="drawer">
+      <button id="btn-drawer" class="drawer-head" title="Toggle console">Console <span id="run-time" class="muted"></span><span id="drawer-chev" class="chev">▾</span></button>
+      <div class="drawer-body">
+        <pre id="output">(console.log output appears here)</pre>
+        <img id="preview" class="preview" style="display:none" alt="Affinity render preview" />
+      </div>
+    </div>
+  </section>
+  <aside class="col inspector">
+    <div class="tabs">
+      <button id="tab-docs" class="tab active">Docs</button>
+      <button id="tab-studio" class="tab">✦ Studio</button>
+    </div>
+    <div id="pane-docs">
+    <div class="row">
+      <button id="btn-docs">Refresh SDK docs</button>
+    </div>
+    <input id="docs-search" placeholder="Search SDK hints, e.g. blend mode…" />
+    <div class="row">
+      <button id="btn-search">Search hints</button>
+    </div>
+    <pre id="docs-output" class="docs">(SDK topics load here. Cached to docs-cache/ on refresh.)</pre>
+    <ul id="docs-list"></ul>
+    </div>
+    <div id="pane-studio" style="display:none">
+      <p id="ai-status-line" class="hint">AI not configured — add a key below.</p>
+      <div id="studio-log" class="studio-log"></div>
+      <textarea id="studio-task" placeholder="Describe the script… e.g. rename all layers with their blend mode"></textarea>
+      <label class="watch"><input type="checkbox" id="studio-use-buffer" checked /> Use editor buffer as context</label>
+      <div class="row">
+        <button id="btn-studio-generate">Generate script</button>
+      </div>
+      <details class="ai-settings">
+        <summary>Model &amp; key</summary>
+        <label class="fld">Provider
+          <select id="studio-provider">
+            <option value="anthropic">Anthropic (Claude)</option>
+            <option value="openai">OpenAI-compatible</option>
+          </select>
+        </label>
+        <label class="fld">Model <input id="studio-model" placeholder="claude-sonnet-4-5" /></label>
+        <label class="fld" id="studio-base-wrap" style="display:none">Base URL <input id="studio-base" placeholder="https://api.openai.com/v1" /></label>
+        <label class="fld">API key <input id="studio-key" type="password" placeholder="sk-…" autocomplete="off" /></label>
+        <div class="row">
+          <button id="btn-studio-save" class="ghost">Save</button>
+          <button id="btn-studio-clear" class="ghost">Clear key</button>
+        </div>
+        <p class="hint">Key is encrypted with your OS keychain and never leaves this machine except to your provider. Refresh SDK docs first so generations are grounded in your Affinity build.</p>
+      </details>
+    </div>
+  </aside>
+</main>
+<script src="renderer.js"></script>
+<div id="drop-overlay" style="display:none"><div>Drop <code>.js</code> files to import<br /><span class="muted">saves to library, then choose Install</span></div></div>
+</body>
+</html>
